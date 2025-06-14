@@ -2,51 +2,45 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 
-# روابط الصفحتين
-urls = [
-    'http://books.toscrape.com/catalogue/page-1.html',
-    'http://books.toscrape.com/catalogue/page-2.html'
-]
+url = "http://books.toscrape.com/catalogue/page-1.html"
 
-books_data = []
+response = requests.get(url)
 
-for url in urls:
-    print(f"🔍 تحميل البيانات من: {url}")
-    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+if response.status_code == 200:
+    soup = BeautifulSoup(response.text, 'html.parser')
+    books = soup.select("article.product_pod")
 
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, 'html.parser')
-        books = soup.find_all('article', class_='product_pod')
+    with open("books_data.csv", "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["اسم الكتاب", "السعر", "رابط صورة الغلاف", "التقييم"])
 
         for book in books:
             # اسم الكتاب
-            title = book.h3.a['title']
+            title = book.h3.a["title"]
 
             # السعر
-            price = book.find('p', class_='price_color').text
+            price = book.find("p", class_="price_color").text.strip()
 
-            # رابط صفحة الكتاب الداخلية
-            book_link = book.h3.a['href']
-            book_page_url = "http://books.toscrape.com/catalogue/" + book_link.replace('../../../', '')
+            # رابط صورة الغلاف (نسبي)
+            img_rel_url = book.find("img")["src"]
+            img_url = "http://books.toscrape.com/" + img_rel_url.replace("../", "")
 
-            # تحميل الصفحة الداخلية للحصول على عدد المراجعات
-            book_response = requests.get(book_page_url, headers={"User-Agent": "Mozilla/5.0"})
-            book_soup = BeautifulSoup(book_response.text, 'html.parser')
+            # التقييم: يتم تمثيله بكلمة داخل class مثل "star-rating Three"
+            rating_class = book.find("p", class_="star-rating")["class"]
+            # التقييم هو الكلمة الثانية في قائمة الكلاسات
+            rating_word = rating_class[1]
 
-            # استخراج عدد المراجعات من الجدول
-            table = book_soup.find('table', class_='table table-striped')
-            num_reviews = table.find_all('tr')[-1].find('td').text  # آخر صف هو عدد المراجعات
+            # تحويل التقييم من كلمة إلى رقم (اختياري)
+            ratings_map = {
+                "One": 1,
+                "Two": 2,
+                "Three": 3,
+                "Four": 4,
+                "Five": 5
+            }
+            rating = ratings_map.get(rating_word, "غير معروف")
 
-            # حفظ البيانات (بدون الصورة)
-            books_data.append([title, price, num_reviews])
-
-    else:
-        print(f"⚠️ فشل في تحميل {url}")
-
-# حفظ البيانات في ملف CSV
-with open('books_with_reviews.csv', 'w', newline='', encoding='utf-8') as file:
-    writer = csv.writer(file)
-    writer.writerow(['Title', 'Price', 'Number of Reviews'])
-    writer.writerows(books_data)
-
-print("✅ تم حفظ البيانات في ملف books_with_reviews.csv")
+            writer.writerow([title, price, img_url, rating])
+            print(f"✅ {title} - {price} - ⭐ {rating} - صورة: {img_url}")
+else:
+    print("❌ فشل في تحميل الصفحة")
